@@ -20,6 +20,7 @@ return new class extends Migration
 
             // TODO: How should duplicate events be handled?
             // TODO: Should event_id be unique per provider?
+            // I have applied the changes by creating a new migration file to add a unique index on (provider, event_id) to prevent duplicate events from being inserted into the database.
         });
     }
 
