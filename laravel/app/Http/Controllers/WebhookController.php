@@ -17,15 +17,28 @@ class WebhookController extends Controller
             'payload'  => 'required|array',
         ]);
 
-        // TODO: How should duplicate events be handled?
-        // TODO: What happens if two requests arrive simultaneously with the same event_id?
-        $event = WebhookEvent::create([
-            'event_id' => $request->input('event_id'),
-            'provider' => $provider,
-            'type'     => $request->input('type'),
-            'payload'  => $request->input('payload'),
-            'status'   => 'pending',
-        ]);
+        // INSERT first; if the (provider, event_id) unique index rejects it, return the
+        // existing row. The DB resolves concurrent deliveries, so there is no check-then-insert race.
+        $event = WebhookEvent::createOrFirst(
+            [
+                'provider' => $provider,
+                'event_id' => $request->input('event_id'),
+            ],
+            [
+                'type'    => $request->input('type'),
+                'payload' => $request->input('payload'),
+                'status'  => 'pending',
+            ],
+        );
+
+        if (! $event->wasRecentlyCreated) {
+            // Duplicate delivery: acknowledge with 2xx so the provider stops retrying.
+            return response()->json([
+                'id'        => $event->id,
+                'status'    => $event->status,
+                'duplicate' => true,
+            ], 200);
+        }
 
         ProcessWebhookJob::dispatch($event);
 
